@@ -1,0 +1,44 @@
+/* Centered container with narrower width */
+.container {
+  max-width: 600px;   /* make narrower */
+  margin: 20px auto;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+/* Section separators */
+hr {
+  border: none;
+  border-top: 1px solid #ccc;
+  margin: 20px 0;
+}
+
+/* Keyword row layout */
+.keywordRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.keywordRow input.key {
+  flex: 1;
+  padding: 4px 6px;
+}
+
+.keywordRow input.color {
+  width: 50px;
+  height: 32px;
+  padding: 0;
+}
+
+.keywordRow button.remove {
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+}

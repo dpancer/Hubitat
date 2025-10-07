@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Hubitat Live Log Highlighter",
+  "version": "1.0",
+  "description": "Highlight Hubitat live logs based on custom keywords and colors.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon16.png"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["http://*/*logs*", "https://*/*logs*", "https://remoteaccess.aws.hubitat.com/logs*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
