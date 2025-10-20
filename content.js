@@ -1,6 +1,6 @@
 // ===============================
-// content.js — Hubitat Highlighter V24
-// Row + inline highlights, live + reload-safe + fully reactive to settings
+// content.js — Hubitat Highlighter V24 fixed for live logs
+// Updated: fully reactive with MutationObserver; respects enabled checkbox and hub IP
 // ===============================
 
 if (!window.hubHighlightInitialized) {
@@ -8,17 +8,27 @@ if (!window.hubHighlightInitialized) {
 
     const processedRows = new WeakSet();
     let currentSettings = { rowKeywords: [], inlineKeywords: [], hubIp: '', enabled: false };
-    const containerSelector = '#pv_id_34_0_content';
     let observer = null;
-    let refreshInterval = null;
+    let isActive = false; // whether highlighter is currently active
 
     // ------------------------------
-    // Utilities
-    // ------------------------------
+    // Utility: Escape RegExp special characters
     function escapeRegExp(str) {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
+    // ------------------------------
+    // Compare numeric IPs to avoid string issues like .1 vs .10
+    function ipMatches(hostname, hubIp) {
+        if (!hostname || !hubIp) return false;
+        const hParts = hostname.split('.').map(Number);
+        const ipParts = hubIp.split('.').map(Number);
+        if (hParts.length !== 4 || ipParts.length !== 4) return false;
+        return hParts.every((v, i) => v === ipParts[i]);
+    }
+
+    // ------------------------------
+    // Inline highlight
     function highlightInline(span, inlineKeywords) {
         if (!span || !document.body.contains(span)) return;
         try {
@@ -52,18 +62,22 @@ if (!window.hubHighlightInitialized) {
                     textNode.parentNode.replaceChild(frag, textNode);
                 });
             });
-        } catch(e) {}
+        } catch (e) { console.warn("⚠️ highlightInline error:", e); }
     }
 
+    // ------------------------------
+    // Row highlight
     function highlightRow(row, color, borderColor) {
         if (!row || !document.body.contains(row)) return;
         try {
             row.style.backgroundColor = color;
             row.style.borderLeft = `4px solid ${borderColor}`;
             processedRows.add(row);
-        } catch(e){}
+        } catch (e) { console.warn("⚠️ highlightRow error:", e); }
     }
 
+    // ------------------------------
+    // Clear highlights from a row
     function clearHighlight(row) {
         if (!row || !document.body.contains(row)) return;
         try {
@@ -78,13 +92,21 @@ if (!window.hubHighlightInitialized) {
                 });
             }
             processedRows.delete(row);
-        } catch(e){}
+        } catch (e) { console.warn("⚠️ clearHighlight error:", e); }
     }
 
+    // ------------------------------
+    // Process a single row for highlighting
     function processRow(row, rowKeywords, inlineKeywords) {
         if (!row || !document.body.contains(row)) return;
+
+        // Clear previous highlights
+        clearHighlight(row);
+
+        // Only process if active
+        if (!isActive) return;
+
         try {
-            clearHighlight(row);
             const logSpan = row.querySelector('span.pl-1');
             if (!logSpan) return;
             const fullText = row.textContent.trim();
@@ -97,14 +119,15 @@ if (!window.hubHighlightInitialized) {
                 }
             }
             highlightInline(logSpan, inlineKeywords);
-            row.dataset.hubicol = "1";
-        } catch(e){}
+            row.dataset.hubicol = "1"; // mark processed
+        } catch (e) { console.warn("⚠️ processRow error:", e); }
     }
 
+    // ------------------------------
+    // Apply highlights to all rows
     function applyAll() {
         const rows = document.querySelectorAll('div.mb-1');
-        if (!currentSettings.enabled || !window.location.hostname.includes(currentSettings.hubIp)) {
-            // Clear highlights if disabled or wrong IP
+        if (!isActive) {
             rows.forEach(clearHighlight);
             return;
         }
@@ -112,68 +135,104 @@ if (!window.hubHighlightInitialized) {
     }
 
     // ------------------------------
-    // Load settings safely
+    // Start MutationObserver (react to new rows)
+    function startObserver() {
+        if (observer) observer.disconnect();
+
+        observer = new MutationObserver(mutations => {
+            if (!isActive) return;
+            mutations.forEach(mutation => {
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType !== 1) return;
+                    if (node.matches && node.matches('div.mb-1')) {
+                        processRow(node, currentSettings.rowKeywords, currentSettings.inlineKeywords);
+                    } else {
+                        const nodes = node.querySelectorAll && node.querySelectorAll('div.mb-1');
+                        if (nodes && nodes.length) nodes.forEach(r => processRow(r, currentSettings.rowKeywords, currentSettings.inlineKeywords));
+                    }
+                });
+            });
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true });
+        console.log("👀 MutationObserver started for live logs");
+
+        // Apply existing rows immediately
+        applyAll();
+    }
+
     // ------------------------------
+    // Stop observer
+    function stopObserver() {
+        if (observer) {
+            observer.disconnect();
+            observer = null;
+        }
+        console.log("🛑 MutationObserver stopped");
+    }
+
+    // ------------------------------
+    // Update active state (start/stop observers only on transition)
+    function updateActiveState() {
+        const shouldBeActive = currentSettings.enabled && ipMatches(window.location.hostname, currentSettings.hubIp);
+
+        if (shouldBeActive && !isActive) {
+            isActive = true;
+            console.log("✅ Activating highlighter (enabled + IP match)");
+            startObserver();
+        } else if (!shouldBeActive && isActive) {
+            isActive = false;
+            console.log("❌ Disabling highlighter (disabled or IP mismatch)");
+            stopObserver();
+            document.querySelectorAll('div.mb-1').forEach(clearHighlight);
+        } else if (isActive) {
+            applyAll();
+        } else {
+            document.querySelectorAll('div.mb-1').forEach(clearHighlight);
+        }
+    }
+
+    // ------------------------------
+    // Load settings safely from storage
     function safeLoadSettings(callback) {
         if (!chrome?.storage?.sync?.get) return;
-        chrome.storage.sync.get(['hubIp','enabled','rowKeywords','inlineKeywords'], data => {
+        chrome.storage.sync.get(['hubIp', 'enabled', 'rowKeywords', 'inlineKeywords'], data => {
             currentSettings = {
                 rowKeywords: data.rowKeywords || [],
                 inlineKeywords: data.inlineKeywords || [],
                 hubIp: data.hubIp || '',
                 enabled: data.enabled
             };
+            console.log("💾 Loaded settings:", currentSettings);
+            updateActiveState();
             if (callback) callback();
         });
     }
 
     // ------------------------------
-    // Initialize MutationObserver and interval
-    // ------------------------------
-    function initObserverAndInterval() {
-        const container = document.querySelector(containerSelector);
-        if (!container || !document.body.contains(container)) {
-            setTimeout(initObserverAndInterval, 200);
-            return;
-        }
-
-        // Disconnect previous observer if exists
-        if (observer) observer.disconnect();
-
-        observer = new MutationObserver(mutations => {
-            mutations.forEach(mutation => {
-                mutation.addedNodes.forEach(node => {
-                    if(node.nodeType === 1 && node.classList.contains('mb-1')) {
-                        processRow(node, currentSettings.rowKeywords, currentSettings.inlineKeywords);
-                    }
-                });
-            });
-        });
-        observer.observe(container, { childList: true, subtree: true });
-
-        // Clear old interval if exists
-        if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(() => applyAll(), 1000);
-
-        // Apply highlights initially
-        applyAll();
-    }
-
-    // ------------------------------
-    // Listen for save/apply messages
-    // ------------------------------
+    // Listen for messages from popup.js
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-        if (msg.action === 'applySettings') {
+        if (msg && msg.action === 'applySettings') {
             safeLoadSettings(() => {
-                applyAll();
                 if (sendResponse) sendResponse({ status: 'applied' });
             });
-            return true; // keep async channel open
+            return true;
         }
     });
 
-    // Initial load
-    safeLoadSettings(() => initObserverAndInterval());
+    // ------------------------------
+    // React to storage changes
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'sync') return;
+        const relevantKeys = ['hubIp', 'enabled', 'rowKeywords', 'inlineKeywords'];
+        if (relevantKeys.some(k => changes[k])) {
+            safeLoadSettings();
+        }
+    });
 
-    console.log("✅ Hubitat Highlighter V24 running (row + inline, live + reload + reactive settings)");
+    // ------------------------------
+    // Initial load
+    safeLoadSettings();
+
+    console.log("✅ Hubitat Highlighter V24 live logs fully reactive (MutationObserver, no setInterval)");
 }

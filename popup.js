@@ -66,33 +66,35 @@ document.addEventListener('DOMContentLoaded', () => {
       rowKeywords,
       inlineKeywords
     }, () => {
+      console.log("💾 Settings saved:", { rowKeywords, inlineKeywords, enabled: enableToggle.checked });
       if (callback) callback();
-      else alert('Settings saved!');
 
-      // Apply to active /logs tab
+      // Apply highlights and borders immediately
       chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
         if (!tabs || !tabs[0]) return;
         const tabId = tabs[0].id;
 
-        try {
-          chrome.tabs.sendMessage(tabId, { action: 'applySettings' }, response => {
-            if (chrome.runtime.lastError) {
-              // Inject content script dynamically if not present
-              chrome.scripting.executeScript({
-                target: { tabId },
-                files: ['content.js']
-              }, () => {
-                try {
-                  chrome.tabs.sendMessage(tabId, { action: 'applySettings' });
-                } catch(e) {
-                  console.warn('Failed to apply highlights after injection:', e);
-                }
-              });
-            }
-          });
-        } catch(e) {
-          console.warn('Error sending message to content script:', e);
-        }
+        // 1️⃣ Apply row + inline highlights (content.js)
+        chrome.tabs.sendMessage(tabId, { action: 'applySettings' }, response => {
+          if (chrome.runtime.lastError) {
+            console.log("⚠️ content.js not injected, injecting now");
+            chrome.scripting.executeScript({
+              target: { tabId },
+              files: ['content.js']
+            }, () => chrome.tabs.sendMessage(tabId, { action: 'applySettings' }));
+          }
+        });
+
+        // 2️⃣ Apply matchborder.js borders
+        chrome.tabs.sendMessage(tabId, { action: 'applyMatchBorder', keywords: rowKeywords }, response => {
+          if (chrome.runtime.lastError) {
+            console.log("⚠️ matchborder.js not injected, injecting now");
+            chrome.scripting.executeScript({
+              target: { tabId },
+              files: ['matchborder.js']
+            }, () => chrome.tabs.sendMessage(tabId, { action: 'applyMatchBorder', keywords: rowKeywords }));
+          }
+        });
       });
     });
   }
