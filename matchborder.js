@@ -1,4 +1,5 @@
 // ===============================
+// Version: 7.5
 // matchborder.js — Hubitat Highlighter (Devices + Apps + Top Panel Names)
 // Fully reactive, incremental updates, persistent storage, detailed logging
 // Updated: early exit if disabled, respect hub IP, auto-clear borders on disable or wrong IP

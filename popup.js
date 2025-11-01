@@ -1,3 +1,5 @@
+// Version: 7.5
+
 document.addEventListener('DOMContentLoaded', () => {
   const hubIpInput = document.getElementById('hubIp');
   const enableToggle = document.getElementById('enableToggle');

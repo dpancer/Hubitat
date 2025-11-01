@@ -1,5 +1,5 @@
 // ===============================
-// options.js — Hubitat Highlighter V13
+// options.js — Hubitat Highlighter V7.5
 // Fully reactive: row highlights + borders
 // Updated: sends proper messages to content.js and matchborder.js
 // ===============================
